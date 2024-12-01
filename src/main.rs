@@ -17,11 +17,17 @@
  */
 
 use std::{
+    collections::HashMap,
+    ffi::{c_char, CStr},
     fs::File,
     io::{BufReader, ErrorKind, Read},
 };
 
-use types::{OsencExtentRecordPayload, OsencRecordBase, OsencServerstatRecordPayload};
+use s57::{ConnectedNode, S57Attribute, S57Type, VectorEdge, S57};
+use types::{
+    OsencAttributeRecordPayload, OsencExtentRecordPayload, OsencFeatureIdentificationRecordPayload,
+    OsencRecordBase, OsencServerstatRecordPayload,
+};
 
 mod s57;
 mod types;
@@ -60,7 +66,7 @@ const SERVER_STATUS_RECORD: u16 = 200;
 
 fn main() {
     let result = parse_file();
-    if let Ok(res) = result {
+    if let Ok(_) = result {
         println!("succesfully read file");
     } else {
         println!("{}", result.err().unwrap());
@@ -68,8 +74,14 @@ fn main() {
 }
 
 fn parse_file() -> std::io::Result<()> {
-    let file = File::open("/home/silas/Downloads/exported/OC-49-M11SO4.oesu")?;
+    let file = File::open("/home/silas/Downloads/exported/OC-31-001DH5.oesu")?;
     let mut reader = BufReader::new(file);
+
+    let mut s57_vector: Vec<S57> = Vec::new();
+    let vector_edges: HashMap<u16, VectorEdge> = HashMap::new();
+    let connected_nodes: HashMap<u16, ConnectedNode> = HashMap::new();
+
+    let mut current_s57: Option<&mut S57> = None;
 
     loop {
         let mut buf = [0u8; std::mem::size_of::<OsencRecordBase>()];
@@ -270,11 +282,98 @@ fn parse_file() -> std::io::Result<()> {
 
                 reader.read_exact(&mut buf)?;
             }
+            FEATURE_ID_RECORD => {
+                let buf_size =
+                    record_base.get_record_len() as usize - std::mem::size_of::<OsencRecordBase>();
+
+                assert_eq!(
+                    buf_size,
+                    std::mem::size_of::<OsencFeatureIdentificationRecordPayload>()
+                );
+
+                let mut buf = [0u8; std::mem::size_of::<OsencFeatureIdentificationRecordPayload>()];
+
+                reader.read_exact(&mut buf)?;
+
+                let payload: OsencFeatureIdentificationRecordPayload =
+                    unsafe { std::mem::transmute(buf) };
+
+                s57_vector.push(S57::from_type_code(payload.get_feature_type_code()));
+                current_s57 = s57_vector.last_mut();
+            }
+            FEATURE_ATTRIBUTE_RECORD => {
+                let buf_size =
+                    record_base.get_record_len() as usize - std::mem::size_of::<OsencRecordBase>();
+
+                //assert_eq!(buf_size, std::mem::size_of::<OsencAttributeRecordPayload>());
+
+                let mut buf = vec![0u8; buf_size];
+
+                reader.read_exact(&mut buf)?;
+
+                let payload = unsafe {
+                    // https://github.com/bdbcat/o-charts_pi/blob/e10fc5c3e9da31a1d19b264df1ac11e39d9226bb/src/Osenc.cpp#L1500
+                    // WARNING: Intentionally mimics buggy(?) C++ implementation
+                    // Original code inconsistently reads buffer of varying lengths (5-12 bytes)
+                    // into a fixed 11-byte struct, suggesting a potential memory handling bug
+                    // in the original C++ code that miraculously "worked"
+                    std::ptr::read_unaligned(buf.as_ptr() as *const OsencAttributeRecordPayload)
+                };
+
+                let attribute_value_type = payload.get_attribute_value_type();
+                let attribute = S57Attribute::from_type_code(payload.get_attribute_type_code());
+
+                if attribute == S57Attribute::Unknown {
+                    continue;
+                }
+
+                match attribute_value_type {
+                    0 => {
+                        if let Some(ref mut s57) = current_s57 {
+                            s57.set_attribute(
+                                attribute,
+                                s57::AttributeValue::UInt32(
+                                    payload.get_attribute_value().get_int(),
+                                ),
+                            );
+                        }
+                    }
+                    2 => {
+                        if let Some(ref mut s57) = current_s57 {
+                            s57.set_attribute(
+                                attribute,
+                                s57::AttributeValue::Double(
+                                    payload.get_attribute_value().get_double(),
+                                ),
+                            );
+                        }
+                    }
+                    4 => {
+                        if let Some(ref mut s57) = current_s57 {
+                            let c_str = unsafe {
+                                CStr::from_ptr(
+                                    payload.get_attribute_value().get_char_ptr() as *const c_char
+                                )
+                            };
+                            let str = c_str.to_str();
+                            if let Ok(str) = str {
+                                s57.set_attribute(
+                                    attribute,
+                                    s57::AttributeValue::String(str.to_string()),
+                                );
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
             _ => {
                 break;
             }
         }
     }
+
+    println!("s57: {:#?}", s57_vector);
 
     Ok(())
 }

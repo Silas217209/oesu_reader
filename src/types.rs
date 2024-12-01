@@ -95,3 +95,60 @@ pub struct OsencFeatureIdentificationRecordPayload {
     feature_id: u16,
     feature_primitive: u8,
 }
+
+impl OsencFeatureIdentificationRecordPayload {
+    pub fn get_feature_type_code(&self) -> u16 {
+        return self.feature_type_code;
+    }
+}
+
+#[repr(C)]
+#[repr(packed)]
+pub struct OsencAttributeRecordPayload {
+    attribute_type_code: u16,
+    attribute_value_type: u8,
+    attribute_value: OsencAttributeValue,
+}
+
+#[allow(dead_code)]
+impl OsencAttributeRecordPayload {
+    pub fn get_attribute_type_code(&self) -> u16 {
+        return self.attribute_type_code;
+    }
+    pub fn get_attribute_value_type(&self) -> u8 {
+        return self.attribute_value_type;
+    }
+    pub fn get_attribute_value(&self) -> OsencAttributeValue {
+        return self.attribute_value;
+    }
+}
+
+#[repr(C)]
+#[repr(packed)]
+#[derive(Clone, Copy)]
+pub union OsencAttributeValue {
+    attribute_value_int: u32,
+    attribute_value_double: f64,
+    attribute_value_char_ptr: *const u8,
+}
+
+#[allow(dead_code)]
+impl OsencAttributeValue {
+    pub fn get_int(&self) -> u32 {
+        unsafe {
+            return self.attribute_value_int;
+        }
+    }
+
+    pub fn get_double(&self) -> f64 {
+        unsafe {
+            return self.attribute_value_double;
+        }
+    }
+
+    pub fn get_char_ptr(&self) -> *const u8 {
+        unsafe {
+            return self.attribute_value_char_ptr;
+        }
+    }
+}

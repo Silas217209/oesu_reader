@@ -55,7 +55,7 @@ pub type MultiGeometry = Vec<Position>;
 #[derive(Clone, Debug)]
 pub enum AttributeValue {
     UInt32(u32),
-    Float(f32),
+    Double(f64),
     String(String),
 }
 
@@ -132,7 +132,7 @@ impl S57 {
         }
     }
 
-    pub fn from_type_code(type_code: i32) -> Self {
+    pub fn from_type_code(type_code: u16) -> Self {
         Self {
             s57_type: S57Type::from_type_code(type_code),
             line_elements: Vec::new(),
@@ -700,7 +700,7 @@ pub enum S57Attribute {
 
 #[allow(dead_code)]
 impl S57Attribute {
-    pub fn from_type_code(type_code: i32) -> Self {
+    pub fn from_type_code(type_code: u16) -> Self {
         match type_code {
             1 => S57Attribute::AGENCY,
             2 => S57Attribute::BCNSHP,
@@ -1089,7 +1089,7 @@ pub enum S57Type {
 }
 #[allow(dead_code)]
 impl S57Type {
-    pub fn from_type_code(type_code: i32) -> S57Type {
+    pub fn from_type_code(type_code: u16) -> S57Type {
         match type_code {
             0 => S57Type::Unknown,
             1 => S57Type::ADMARE,
