@@ -22,8 +22,8 @@ use std::fmt;
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Position {
-    lat: f64,
-    lon: f64,
+    pub lat: f64,
+    pub lon: f64,
 }
 
 #[allow(dead_code)]

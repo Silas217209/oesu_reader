@@ -16,6 +16,8 @@
  * language governing permissions and limitations under the Licence.
  */
 
+use crate::s57::Position;
+
 #[allow(dead_code)]
 #[derive(Debug)]
 #[repr(C, packed)]
@@ -150,5 +152,70 @@ impl OsencAttributeValue {
         unsafe {
             return self.attribute_value_char_ptr;
         }
+    }
+}
+
+#[derive(Debug)]
+#[repr(C, packed)]
+#[allow(dead_code)]
+pub struct OsencPointGeometryRecordPayload {
+    lat: f64,
+    lon: f64,
+}
+
+impl Into<Position> for OsencPointGeometryRecordPayload {
+    fn into(self) -> Position {
+        return Position {
+            lat: self.lat,
+            lon: self.lon,
+        };
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Copy, Clone)]
+#[repr(C, packed)]
+pub struct OsencAreaGeometryRecordPayload {
+    extent_s_lat: f64,
+    extent_n_lat: f64,
+    extent_w_lon: f64,
+    extent_e_lon: f64,
+    contour_count: u32,
+    triprim_count: u32,
+    edgevector_count: u32,
+    payload: *const std::ffi::c_void,
+}
+
+#[allow(dead_code)]
+impl OsencAreaGeometryRecordPayload {
+    pub fn get_extent_s_lat(&self) -> f64 {
+        self.extent_s_lat
+    }
+    pub fn get_extent_n_lat(&self) -> f64 {
+        self.extent_n_lat
+    }
+
+    pub fn get_extent_w_lon(&self) -> f64 {
+        self.extent_w_lon
+    }
+
+    pub fn get_extent_e_lon(&self) -> f64 {
+        self.extent_e_lon
+    }
+
+    pub fn get_contour_count(&self) -> u32 {
+        self.contour_count
+    }
+
+    pub fn get_triprim_count(&self) -> u32 {
+        self.triprim_count
+    }
+
+    pub fn get_edgevector_count(&self) -> u32 {
+        self.edgevector_count
+    }
+
+    pub fn get_payload(&self) -> *const std::ffi::c_void {
+        self.payload
     }
 }

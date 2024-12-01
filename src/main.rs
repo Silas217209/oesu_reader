@@ -20,13 +20,15 @@ use std::{
     collections::HashMap,
     ffi::{c_char, CStr},
     fs::File,
-    io::{BufReader, ErrorKind, Read},
+    i32,
+    io::{BufReader, ErrorKind, Read, Seek, SeekFrom},
 };
 
-use s57::{ConnectedNode, S57Attribute, S57Type, VectorEdge, S57};
+use s57::{ConnectedNode, LineElement, S57Attribute, S57Type, VectorEdge, S57};
 use types::{
-    OsencAttributeRecordPayload, OsencExtentRecordPayload, OsencFeatureIdentificationRecordPayload,
-    OsencRecordBase, OsencServerstatRecordPayload,
+    OsencAreaGeometryRecordPayload, OsencAttributeRecordPayload, OsencExtentRecordPayload,
+    OsencFeatureIdentificationRecordPayload, OsencPointGeometryRecordPayload, OsencRecordBase,
+    OsencServerstatRecordPayload,
 };
 
 mod s57;
@@ -367,13 +369,75 @@ fn parse_file() -> std::io::Result<()> {
                     _ => {}
                 }
             }
+            FEATURE_GEOMETRY_RECORD_POINT => {
+                let buf_size =
+                    record_base.get_record_len() as usize - std::mem::size_of::<OsencRecordBase>();
+
+                assert_eq!(
+                    buf_size,
+                    std::mem::size_of::<OsencPointGeometryRecordPayload>()
+                );
+
+                let mut buf = [0u8; std::mem::size_of::<OsencPointGeometryRecordPayload>()];
+
+                reader.read_exact(&mut buf)?;
+
+                let point: OsencPointGeometryRecordPayload = unsafe { std::mem::transmute(buf) };
+                if let Some(ref mut s57) = current_s57 {
+                    s57.set_point_geometry(point.into());
+                }
+            }
+            FEATURE_GEOMETRY_RECORD_AREA => {
+                let payload_size =
+                    record_base.get_record_len() as usize - std::mem::size_of::<OsencRecordBase>();
+                let mut payload_buffer = vec![0u8; payload_size];
+                reader.read_exact(&mut payload_buffer)?;
+
+                let mut cursor = std::io::Cursor::new(&payload_buffer);
+
+                let mut record_buf = [0u8; std::mem::size_of::<OsencAreaGeometryRecordPayload>()];
+                cursor.read_exact(&mut record_buf)?;
+
+                let record: OsencAreaGeometryRecordPayload =
+                    unsafe { std::mem::transmute(record_buf) };
+
+                // skip tessellation data
+                let tri_prim_count = record.get_triprim_count();
+                let contour_count = record.get_contour_count();
+
+                let mut remaining_payload =
+                    &payload_buffer[std::mem::size_of::<OsencAreaGeometryRecordPayload>()..];
+
+                let contour_size = contour_count as usize * std::mem::size_of::<u32>();
+                remaining_payload = &remaining_payload[contour_size..];
+                for _ in 0..tri_prim_count {
+                    remaining_payload = &remaining_payload[1..];
+
+                    let vert_count = u32::from_le_bytes(
+                        remaining_payload[..std::mem::size_of::<u32>()]
+                            .try_into()
+                            .unwrap(),
+                    ) as usize;
+                    println!("vert_count: {}", vert_count);
+
+                    remaining_payload = &remaining_payload[std::mem::size_of::<u32>()..];
+
+                    let vertex_data_size = vert_count * 2 * std::mem::size_of::<f32>();
+
+                    // Skip metadata (4 doubles, each 8 bytes)
+                    let metadata_size = 4 * std::mem::size_of::<f64>();
+                    remaining_payload = &remaining_payload[metadata_size..];
+
+                    remaining_payload = &remaining_payload[vertex_data_size..];
+                }
+
+                println!("Remaining payload size: {}", remaining_payload.len());
+            }
             _ => {
                 break;
             }
         }
     }
-
-    println!("s57: {:#?}", s57_vector);
 
     Ok(())
 }
