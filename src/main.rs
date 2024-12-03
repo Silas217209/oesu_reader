@@ -21,10 +21,11 @@ use std::{
     ffi::{c_char, CStr},
     fs::File,
     i32,
-    io::{BufReader, ErrorKind, Read, Seek, SeekFrom},
+    io::{BufReader, ErrorKind, Read, Seek, SeekFrom, Write},
+    u8,
 };
 
-use s57::{ConnectedNode, LineElement, S57Attribute, S57Type, VectorEdge, S57};
+use s57::{CLineElement, ConnectedNode, LineElement, S57Attribute, S57Type, VectorEdge, S57};
 use types::{
     OsencAreaGeometryRecordPayload, OsencAttributeRecordPayload, OsencExtentRecordPayload,
     OsencFeatureIdentificationRecordPayload, OsencPointGeometryRecordPayload, OsencRecordBase,
@@ -82,6 +83,8 @@ fn parse_file() -> std::io::Result<()> {
     let mut s57_vector: Vec<S57> = Vec::new();
     let vector_edges: HashMap<u16, VectorEdge> = HashMap::new();
     let connected_nodes: HashMap<u16, ConnectedNode> = HashMap::new();
+
+    let mut count = 0;
 
     let mut current_s57: Option<&mut S57> = None;
 
@@ -401,37 +404,29 @@ fn parse_file() -> std::io::Result<()> {
                 let record: OsencAreaGeometryRecordPayload =
                     unsafe { std::mem::transmute(record_buf) };
 
-                // skip tessellation data
-                let tri_prim_count = record.get_triprim_count();
-                let contour_count = record.get_contour_count();
+                // skip tesselation data
+                let triprim_count = record.get_triprim_count();
+                let countour_count = record.get_contour_count();
 
-                let mut remaining_payload =
-                    &payload_buffer[std::mem::size_of::<OsencAreaGeometryRecordPayload>()..];
+                cursor.seek(SeekFrom::Current(
+                    countour_count as i64 * std::mem::size_of::<i32>() as i64,
+                ))?;
 
-                let contour_size = contour_count as usize * std::mem::size_of::<u32>();
-                remaining_payload = &remaining_payload[contour_size..];
-                for _ in 0..tri_prim_count {
-                    remaining_payload = &remaining_payload[1..];
+                for _ in 0..triprim_count {
+                    cursor.seek(SeekFrom::Current(1))?;
 
-                    let vert_count = u32::from_le_bytes(
-                        remaining_payload[..std::mem::size_of::<u32>()]
-                            .try_into()
-                            .unwrap(),
-                    ) as usize;
-                    println!("vert_count: {}", vert_count);
+                    let mut data_nvert = [0u8; std::mem::size_of::<u32>()];
+                    cursor.read_exact(&mut data_nvert)?;
 
-                    remaining_payload = &remaining_payload[std::mem::size_of::<u32>()..];
+                    let nvert: u32 = unsafe { std::mem::transmute(data_nvert) };
+                    let byte_size = nvert as i64 * 2 * std::mem::size_of::<f32>() as i64;
 
-                    let vertex_data_size = vert_count * 2 * std::mem::size_of::<f32>();
-
-                    // Skip metadata (4 doubles, each 8 bytes)
-                    let metadata_size = 4 * std::mem::size_of::<f64>();
-                    remaining_payload = &remaining_payload[metadata_size..];
-
-                    remaining_payload = &remaining_payload[vertex_data_size..];
+                    cursor.seek(SeekFrom::Current(4 * std::mem::size_of::<f64>() as i64))?;
+                    cursor.seek(SeekFrom::Current(byte_size))?;
                 }
 
-                println!("Remaining payload size: {}", remaining_payload.len());
+                println!("remaining: {}", payload_size - cursor.position() as usize);
+                break;
             }
             _ => {
                 break;

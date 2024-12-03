@@ -33,6 +33,24 @@ pub enum Direction {
     Reverse,
 }
 
+#[repr(C)]
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CDirection {
+    Forward,
+    Reverse,
+}
+
+#[repr(C, packed)]
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct CLineElement {
+    start_connected_node: u32,
+    edge_vector: u32,
+    end_connected_node: u32,
+    direction: Direction,
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct LineElement {

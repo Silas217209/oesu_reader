@@ -183,7 +183,6 @@ pub struct OsencAreaGeometryRecordPayload {
     contour_count: u32,
     triprim_count: u32,
     edgevector_count: u32,
-    payload: *const std::ffi::c_void,
 }
 
 #[allow(dead_code)]
@@ -213,9 +212,5 @@ impl OsencAreaGeometryRecordPayload {
 
     pub fn get_edgevector_count(&self) -> u32 {
         self.edgevector_count
-    }
-
-    pub fn get_payload(&self) -> *const std::ffi::c_void {
-        self.payload
     }
 }
