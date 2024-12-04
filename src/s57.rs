@@ -17,13 +17,49 @@
  */
 
 use std::collections::HashMap;
+use std::f64::consts::PI;
 use std::fmt;
 
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Position {
     pub lat: f64,
     pub lon: f64,
+}
+
+const WGS84_SEMIMAJOR_AXIS_METERS: f64 = 6378137.0;
+const MERCATOR_K0: f64 = 0.9996;
+const DEGREE: f64 = PI / 180.0;
+
+impl Position {
+    pub fn from_simple_mercator(x: f64, y: f64, reference: &Position) -> Self {
+        let z = WGS84_SEMIMAJOR_AXIS_METERS * MERCATOR_K0;
+
+        let lat0 = reference.lat;
+        let lon0 = reference.lon;
+
+        let s0 = (lat0 * DEGREE).sin();
+        let y0 = 0.5 * ((1.0 + s0) / (1.0 - s0)).ln() * z;
+
+        let lat = (2.0 * ((y0 + y) / z).exp().atan() - PI / 2.0) / DEGREE;
+        let lon = lon0 + (x / (DEGREE * z));
+
+        Self { lat, lon }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct Rect {
+    pub top_left: Position,
+    pub bottom_right: Position,
+}
+
+impl Rect {
+    pub fn center(&self) -> Position {
+        return Position {
+            lat: (self.top_left.lat + self.bottom_right.lat) / 2.0,
+            lon: (self.top_left.lon + self.bottom_right.lon) / 2.0,
+        };
+    }
 }
 
 #[allow(dead_code)]
@@ -33,25 +69,6 @@ pub enum Direction {
     Reverse,
 }
 
-#[repr(C)]
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CDirection {
-    Forward,
-    Reverse,
-}
-
-#[repr(C, packed)]
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub struct CLineElement {
-    start_connected_node: u32,
-    edge_vector: u32,
-    end_connected_node: u32,
-    direction: Direction,
-}
-
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct LineElement {
     start_connected_node: u32,
@@ -63,8 +80,8 @@ pub struct LineElement {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct PointGeometry {
-    position: Position,
-    value: f64,
+    pub position: Position,
+    pub value: f64,
 }
 
 pub type MultiGeometry = Vec<Position>;
@@ -135,6 +152,7 @@ pub struct S57 {
     point_geometry: Option<Position>,
     attributes: HashMap<S57Attribute, AttributeValue>,
 }
+
 #[allow(dead_code)]
 impl S57 {
     pub fn new(s57_type: S57Type) -> Self {
@@ -175,16 +193,6 @@ impl S57 {
         self.attributes.get(&attribute)
     }
 
-    pub fn build_geometry(
-        &mut self,
-        vector_edges: &HashMap<u32, VectorEdge>,
-        connected_nodes: &HashMap<u32, ConnectedNode>,
-    ) {
-        self.lines = S57::build_geometries(&self.line_elements, vector_edges, connected_nodes);
-        self.polygons =
-            S57::build_geometries(&self.polygon_line_elements, vector_edges, connected_nodes);
-    }
-
     pub fn set_line_geometry(&mut self, elements: &[LineElement]) {
         self.line_elements = elements.to_vec();
     }
@@ -219,95 +227,6 @@ impl S57 {
 
     pub fn s57_type(&self) -> S57Type {
         self.s57_type
-    }
-
-    pub fn build_geometries<T: Clone>(
-        line_elements: &[LineElement],
-        vector_edges: &HashMap<u32, VectorEdge>,
-        connected_nodes: &HashMap<u32, ConnectedNode>,
-    ) -> Vec<T>
-    where
-        Vec<Position>: Into<T>,
-    {
-        // Find connected line strings
-        let mut line_strings: Vec<Vec<LineElement>> = Vec::new();
-
-        for line_element in line_elements {
-            let mut found_line_string = false;
-
-            // Try to connect to an existing line string
-            for line_string in line_strings.iter_mut() {
-                if line_element.start_connected_node
-                    == line_string.last().unwrap().end_connected_node
-                {
-                    // Append to the end of an existing line string
-                    line_string.push(line_element.clone());
-                    found_line_string = true;
-                    break;
-                } else if line_element.end_connected_node
-                    == line_string.first().unwrap().start_connected_node
-                {
-                    // Insert at the beginning of an existing line string
-                    line_string.insert(0, line_element.clone());
-                    found_line_string = true;
-                    break;
-                }
-            }
-
-            // If no connection found, start a new line string
-            if !found_line_string {
-                line_strings.push(vec![line_element.clone()]);
-            }
-        }
-
-        // Build geometries from line strings
-        let mut geometries = Vec::new();
-
-        for line_string in line_strings {
-            let mut geometry: Vec<Position> = Vec::new();
-
-            for line_element in &line_string {
-                // Add start node position
-                if let Some(start_node) = connected_nodes.get(&line_element.start_connected_node) {
-                    geometry.push(start_node.position().clone());
-                } else {
-                    eprintln!(
-                        "Connected node index {} not found",
-                        line_element.start_connected_node
-                    );
-                }
-
-                // Add vector edge points if edge exists
-                if line_element.edge_vector != 0 {
-                    if let Some(vector_edge) = vector_edges.get(&line_element.edge_vector) {
-                        let positions = vector_edge.positions();
-                        match line_element.direction {
-                            Direction::Reverse => geometry.extend(positions.iter().rev().cloned()),
-                            Direction::Forward => geometry.extend(positions.iter().cloned()),
-                        }
-                    } else {
-                        eprintln!("Vector edge {} not found", line_element.edge_vector);
-                    }
-                }
-            }
-
-            // Add end node position of the last line element
-            if let Some(end_node) =
-                connected_nodes.get(&line_string.last().unwrap().end_connected_node)
-            {
-                geometry.push(end_node.position().clone());
-            } else {
-                eprintln!(
-                    "Connected node index {} not found",
-                    line_string.last().unwrap().end_connected_node
-                );
-            }
-
-            // Convert geometry to the target type (MultiGeometry)
-            geometries.push(geometry.into());
-        }
-
-        geometries
     }
 }
 

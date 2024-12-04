@@ -79,14 +79,14 @@ impl OsencServerstatRecordPayload {
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct OsencExtentRecordPayload {
-    extent_sw_lat: f64,
-    extent_sw_lon: f64,
-    extent_nw_lat: f64,
-    extent_nw_lon: f64,
-    extent_ne_lat: f64,
-    extent_ne_lon: f64,
-    extent_se_lat: f64,
-    extent_se_lon: f64,
+    pub extent_sw_lat: f64,
+    pub extent_sw_lon: f64,
+    pub extent_nw_lat: f64,
+    pub extent_nw_lon: f64,
+    pub extent_ne_lat: f64,
+    pub extent_ne_lon: f64,
+    pub extent_se_lat: f64,
+    pub extent_se_lon: f64,
 }
 
 #[allow(dead_code)]
@@ -213,4 +213,26 @@ impl OsencAreaGeometryRecordPayload {
     pub fn get_edgevector_count(&self) -> u32 {
         self.edgevector_count
     }
+}
+
+#[derive(Debug)]
+#[repr(C, packed)]
+#[allow(dead_code)]
+pub struct OsencLineGeometryRecordPayload {
+    extent_s_lat: f64,
+    extent_n_lat: f64,
+    extent_w_lon: f64,
+    extent_e_lon: f64,
+    edgevector_count: u32,
+}
+
+#[derive(Debug)]
+#[repr(C, packed)]
+#[allow(dead_code)]
+pub struct OsencMultipointGeometryRecordPayload {
+    extent_s_lat: f64,
+    extent_n_lat: f64,
+    extent_w_lon: f64,
+    extent_e_lon: f64,
+    pub point_count: u32,
 }
